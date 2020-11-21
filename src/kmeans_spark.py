@@ -37,13 +37,11 @@ def find_cen_idx(centroid, target):
             return idx
 
 
-def kmeans_sp(X, cen, n_samples, n_clusters, max_iter):
+def kmeans_sp(X, cen, max_iter):
     """
     k means with spark
     :param X: RDD, input data
     :param cen: RDD, initial centroids
-    :param n_samples: number of samples in X
-    :param n_clusters: number of clusters
     :param max_iter: max iteration number
     :return: data_group - list of assigned clusters in each iteration
             centroids_output - list of centroids in each iteration
@@ -83,4 +81,4 @@ def kmeans_sp(X, cen, n_samples, n_clusters, max_iter):
 
         niter += 1
 
-    return final_cen, final_assign
+    return final_cen, final_assign, cost_output
