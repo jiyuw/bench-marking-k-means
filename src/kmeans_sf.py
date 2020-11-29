@@ -76,4 +76,4 @@ def kmeans_sf(con, X, cen, max_iter):
     con.cursor().execute(cen_sql)
     final_cen = con.cursor().fetch_pandas_all()
 
-    return np.array(final_cen), np.array(final_assign), cost_output
+    return np.array(final_assign), np.array(final_cen), np.array(cost_output)

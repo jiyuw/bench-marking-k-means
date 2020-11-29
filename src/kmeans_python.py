@@ -1,5 +1,5 @@
 import numpy as np
-
+from tqdm.notebook import trange
 
 def load_dataset_py(file):
     """
@@ -13,26 +13,26 @@ def load_dataset_py(file):
 def euc_dist_py(X, centroid):
     """
     calculate euclidean distance
-    :param X: points coordinate (n, 2)
-    :param centroid: centroid coordinate (k, 2)
+    :param X: points coordinate (n_samples, n_features)
+    :param centroid: centroid coordinate (n_clusters, n_features)
     :return: euclidean distance
     """
-    n_samples = X.shape[0]
+    n_samples, n_features = X.shape
     n_clusters = centroid.shape[0]
 
-    pts_x_mat = np.array([X[:, 0], ] * n_clusters).T
-    pts_y_mat = np.array([X[:, 1], ] * n_clusters).T
+    dist = np.zeros(shape=(n_samples, n_clusters))
+    for i in range(n_features):
+        pts_mat = np.array([X[:, i], ] * n_clusters).T
+        ctd_mat = np.array([centroid[:,i],] * n_samples)
+        dist += (pts_mat-ctd_mat)**2
 
-    ctd_x_mat = np.array([centroid[:,0],] * n_samples)
-    ctd_y_mat = np.array([centroid[:,1],] * n_samples)
-
-    return (pts_x_mat-ctd_x_mat)**2+(pts_y_mat-ctd_y_mat)**2
+    return dist
 
 def kmeans_py(X, cen, max_iter):
     """
     k means with python
-    :param X: input data - (n,2)
-    :param cen: initial centroids - (k,2)
+    :param X: input data - (n_samples, n_features)
+    :param cen: initial centroids - (n_clusters, n_features)
     :param max_iter: max iteration number
     :return: data_group - list of assigned clusters in each iteration
             centroids_output - list of centroids in each iteration
@@ -45,8 +45,7 @@ def kmeans_py(X, cen, max_iter):
     centroids_output = []
     cost_output = []
 
-    niter = 0
-    while niter < max_iter:
+    for i in trange(max_iter):
         centroids_output.append(cen)
 
         # calculate enclidean distance between datapoints and centroids
@@ -70,6 +69,4 @@ def kmeans_py(X, cen, max_iter):
             cen[i] = np.mean(curr_data, axis=0)
         cost_output.append(total_cost)
 
-        niter += 1
-
-    return data_group, centroids_output, cost_output
+    return np.array(data_group), np.array(centroids_output), np.array(cost_output)

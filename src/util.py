@@ -1,8 +1,10 @@
 import numpy as np
+import pandas as pd
 from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.utils.extmath import row_norms, stable_cumsum
-
-
+from sklearn.metrics import normalized_mutual_info_score as NMI
+import os
+import time
 
 def cen_init(X, n_clusters, random_state, n_local_trials=None):
     """
@@ -64,3 +66,97 @@ def cen_init(X, n_clusters, random_state, n_local_trials=None):
         centers[c] = X[best_candidate]
 
     return centers
+
+def expand_dataset(X, cen, pa, target_n):
+    n_samples, n_features = X.shape
+    n_clusters = cen.shape[0]
+
+    new_sample_per_cluster = (target_n-n_samples)//n_clusters
+
+    for i in range(n_clusters):
+        curr_cluster = np.array([i+1]*new_sample_per_cluster)
+        curr_cen = cen[i, :]
+        tmp = np.zeros((new_sample_per_cluster, n_features))
+        for j in range(n_features):
+            tmp[:, j] = np.random.normal(curr_cen[j], 1, size=new_sample_per_cluster).astype(int)
+        X = np.append(X, tmp, axis=0)
+        pa = np.append(pa, curr_cluster)
+
+    return X, pa
+
+
+def millitime(t):
+    return round(t*1000, 3)
+
+class dataset():
+    def __init__(self, name, location, con=None, output_dir="results/python"):
+        if location not in ['python', 'spark', 'snowflake']:
+            raise ValueError("wrong type")
+        if location in ['spark', 'snowflake'] and not con:
+            raise ValueError("need connector for spark or snowflake")
+        self.name = name
+        self.con = con
+        self.location = location
+        self.output_file = {'label': os.path.join(output_dir, self.name + f"-label_{self.location}.txt"),
+                            'centroid': os.path.join(output_dir, self.name + f"-cen_{self.location}.txt"),
+                            'cost': os.path.join(output_dir, self.name + f'-cost_{self.location}.txt')}
+        print("#### "+name)
+        print(f"- {name} initiated")
+
+    def load_dataset(self, load_fn, root_dir="datasets"):
+        if self.con:
+            self.data = load_fn(self.con, os.path.join(root_dir, self.name + '.txt'))
+            self.gt_par = load_fn(self.con, os.path.join(root_dir, self.name + '-pa.txt'))
+            self.gt_cen = load_fn(self.con, os.path.join(root_dir, self.name + '-c.txt'))
+            self.init_cen = load_fn(self.con, os.path.join(root_dir, self.name + '-ic.txt'))
+        else:
+            self.data = load_fn(os.path.join(root_dir, self.name + '.txt'))
+            self.gt_par = load_fn(os.path.join(root_dir, self.name + '-pa.txt'))
+            self.gt_cen = load_fn(os.path.join(root_dir, self.name + '-c.txt'))
+            self.init_cen = load_fn(os.path.join(root_dir, self.name + '-ic.txt'))
+        print(f"- {self.name} data loaded")
+
+    def dataset_info(self):
+        n_sample, n_feature = self.data.shape
+        n_cluster = self.gt_cen.shape[0]
+        return n_sample, n_feature, n_cluster
+
+    def kmeans_train(self, train_fn, max_iter):
+        print(f"- {self.name} training start")
+        start = time.time()
+        if self.location == 'snowflake':
+            self.label, self.centroid, self.cost = train_fn(self.con, self.data, self.init_cen, max_iter)
+        else:
+            self.label, self.centroid, self.cost = train_fn(self.data, self.init_cen, max_iter)
+        end = time.time()
+        print(f"- {self.name} trained")
+        t = millitime(end-start)
+        print(f"time used: {t}ms")
+        return t
+
+    def save_output(self):
+        np.savetxt(self.output_file['label'], self.label, fmt='%d')
+        np.savetxt(self.output_file['cost'], self.cost)
+        if self.location == 'python':
+            np.savetxt(self.output_file['centroid'], self.centroid.reshape(self.centroid.shape[0], -1), fmt='%d')
+        else:
+            np.savetxt(self.output_file['centroid'], self.centroid, fmt='%d')
+        print(f"- {self.name} saved")
+
+    def load_output(self):
+        self.label = np.loadtxt(self.output_file['label'])
+        self.cost = np.loadtxt(self.output_file['cost'])
+        self.centroid = np.loadtxt(self.output_file['centroid'])
+        if self.location == 'python':
+            self.centroid = self.centroid.reshape((self.centroid.shape[0], -1, 2))
+        print(f"- {self.name} output loaded")
+
+    def eval_output(self):
+        print(f"The final cost reduction is {round((self.cost[-2]-self.cost[-1])/self.cost[-2]*100, 2)}%")
+        if self.location == 'python':
+            final_assign = self.label[-1,:]
+        else:
+            final_assign = self.label
+        nmi = NMI(self.gt_par, final_assign)
+        print(f"The final NMI score is {round(nmi, 4)}")
+        return nmi

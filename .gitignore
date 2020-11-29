@@ -126,3 +126,5 @@ dmypy.json
 
 # new addition
 *test.ipynb
+datasets/
+results/python/

@@ -3,6 +3,7 @@ from pyspark.sql.functions import *
 from pyspark import SparkContext, SparkConf
 import sys
 import numpy as np
+from tqdm.notebook import trange
 
 
 def load_dataset_sp(sc, file):
@@ -23,7 +24,9 @@ def euc_dist_sp(point, centroid):
     :param centroid:
     :return:
     """
-    return (point[0]-centroid[0])**2+(point[1]-centroid[1])**2
+    point = np.array(point)
+    centroid = np.array(centroid)
+    return (point-centroid)**2
 
 def find_cen_idx(centroid, target):
     """
@@ -50,14 +53,13 @@ def kmeans_sp(X, cen, max_iter):
     # output - not output intermediate centroids and label assignments
     cost_output = []
 
-    niter = 0
-    while niter < max_iter:
-        # create data point - centroid pair, ((data_1, data_2), (cen_1, cen_2))
+    for i in trange(max_iter):
+        # create data point - centroid pair, ((data), (cen))
         X_cen_pair = X.cartesian(cen)
-        if niter == max_iter-1:
+        if i == max_iter-1:
             final_cen = np.array(cen.collect())
 
-        # calculate distance between all points to all centroids
+        # calculate distance between all points to all centroids: (point, (centroid, distance))
         X_cen_pair = X_cen_pair.map(lambda pair: (pair[0], (pair[1], euc_dist_sp(pair[0], pair[1]))))
 
         # find closest centroid of all points
@@ -67,7 +69,7 @@ def kmeans_sp(X, cen, max_iter):
         cost = closest_cen.map(lambda pair: pair[1][1]).sum()
         cost_output.append(cost)
 
-        if niter == max_iter-1:
+        if i == max_iter-1:
             final_assign = closest_cen.map(lambda pair:(pair[0], find_cen_idx(final_cen, pair[1][0])))
             final_assign = np.array(final_assign.collect())
             break
@@ -76,9 +78,7 @@ def kmeans_sp(X, cen, max_iter):
         cen_X_pair = closest_cen.map(lambda pair: (pair[1][0], (pair[0], 1)))
 
         # re-calculate centroids
-        cen = cen_X_pair.reduceByKey(lambda a, b: ((a[0][0]+b[0][0], a[0][1]+b[0][1]),a[1]+b[1]))\
-                        .map(lambda pair: (pair[1][0][0]/pair[1][1], pair[1][0][1]/pair[1][1]))
+        cen = cen_X_pair.reduceByKey(lambda a, b: (tuple(np.array(a[0])+np.array(b[0])),a[1]+b[1]))\
+                        .map(lambda pair: tuple(np.array(pair[1][0])/pair[1][1]))
 
-        niter += 1
-
-    return final_cen, final_assign, cost_output
+    return final_assign, final_cen, np.array(cost_output)
