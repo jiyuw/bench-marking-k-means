@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.utils.extmath import row_norms, stable_cumsum
 from sklearn.metrics import normalized_mutual_info_score as NMI
@@ -124,10 +123,10 @@ class dataset():
     def kmeans_train(self, train_fn, max_iter):
         print(f"- {self.name} training start")
         start = time.time()
-        if self.location == 'snowflake':
-            self.label, self.centroid, self.cost = train_fn(self.con, self.data, self.init_cen, max_iter)
-        else:
+        if self.location == 'python':
             self.label, self.centroid, self.cost = train_fn(self.data, self.init_cen, max_iter)
+        else:
+            self.label, self.centroid, self.cost = train_fn(self.con, self.data, self.init_cen, max_iter)
         end = time.time()
         print(f"- {self.name} trained")
         t = millitime(end-start)
@@ -135,24 +134,27 @@ class dataset():
         return t
 
     def save_output(self):
-        np.savetxt(self.output_file['label'], self.label, fmt='%d')
-        np.savetxt(self.output_file['cost'], self.cost)
+        np.savetxt(self.output_file['label'], self.label)
+        if self.cost:
+            np.savetxt(self.output_file['cost'], self.cost)
         if self.location == 'python':
             np.savetxt(self.output_file['centroid'], self.centroid.reshape(self.centroid.shape[0], -1), fmt='%d')
         else:
-            np.savetxt(self.output_file['centroid'], self.centroid, fmt='%d')
+            np.savetxt(self.output_file['centroid'], self.centroid)
         print(f"- {self.name} saved")
 
     def load_output(self):
         self.label = np.loadtxt(self.output_file['label'])
-        self.cost = np.loadtxt(self.output_file['cost'])
+        if self.cost:
+            self.cost = np.loadtxt(self.output_file['cost'])
         self.centroid = np.loadtxt(self.output_file['centroid'])
         if self.location == 'python':
             self.centroid = self.centroid.reshape((self.centroid.shape[0], -1, 2))
         print(f"- {self.name} output loaded")
 
     def eval_output(self):
-        print(f"The final cost reduction is {round((self.cost[-2]-self.cost[-1])/self.cost[-2]*100, 2)}%")
+        if self.cost:
+            print(f"The final cost reduction is {round((self.cost[-2]-self.cost[-1])/self.cost[-2]*100, 2)}%")
         if self.location == 'python':
             final_assign = self.label[-1,:]
         else:
